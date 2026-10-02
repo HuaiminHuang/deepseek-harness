@@ -4,13 +4,13 @@
 
 桌面埋点遵循[产品采集策略](../../packages/client/product-analytics/README.zh.md)及其动态应用配置，不包含 Web 使用情况。安装更新会等待该操作的本地埋点接收请求结束，再锁定 API 准入并停止 Host。接收请求的时限为一秒，失败不会阻止安装，也不等待收集端完成发送。
 
-桌面应用是完整 dsh Web 应用外的一层 Electron 壳。Electron RunAsNode 子进程启动共享 profile runner，Electron 立即从 `dsh-app://app/` 加载打包内的 Web 入口。共享加载页等待 Host 启动注入，然后在同一文档中启动客户端。Electron 将应用 HTTP 请求转发给已认证的 Web Host，转发时丢弃描述 Node fetch 连接而非资源本身的响应头（`transfer-encoding`、`connection`、`keep-alive`），并把插件 bundle 响应标记为 `no-store`，因为其每次启动都变化的 revision 只会在 Chromium 磁盘缓存中累积；WebSocket 流连接到该 Host，仅为归属的应用窗口附加凭据。Node IPC 承载启动注入、就绪与关闭。Desktop 默认使用端口 `19387`，与 Web 的 `3080` 分开；可通过 `webserver.config.port` patch 覆盖。
+桌面应用是完整 dsh Web 应用外的一层 Electron 壳。macOS 和 Windows 使用 Electron RunAsNode 子进程启动共享 profile runner；Linux 源码开发使用已准备的独立 Node payload，Electron 立即从 `dsh-app://app/` 加载打包内的 Web 入口。共享加载页等待 Host 启动注入，然后在同一文档中启动客户端。Electron 将应用 HTTP 请求转发给已认证的 Web Host，转发时丢弃描述 Node fetch 连接而非资源本身的响应头（`transfer-encoding`、`connection`、`keep-alive`），并把插件 bundle 响应标记为 `no-store`，因为其每次启动都变化的 revision 只会在 Chromium 磁盘缓存中累积；WebSocket 流连接到该 Host，仅为归属的应用窗口附加凭据。Node IPC 承载启动注入、就绪与关闭。Desktop 默认使用端口 `19387`，与 Web 的 `3080` 分开；可通过 `webserver.config.port` patch 覆盖。
 
 应用菜单第一项“**关于 DeepSeek Harness**”打开 Electron 原生关于面板，展示应用图标、产品名称和当前安装的发布版本。菜单文案跟随桌面壳的语言。macOS 的隐藏、隐藏其他、显示全部和退出条目使用本地化文案，隐藏和退出条目包含 DeepSeek Harness 产品名称。这些条目保留原生动作和快捷键。macOS 从应用包读取图标，因此未打包的开发启动会显示 Electron 图标；Windows 使用随包分发的 PNG。
 
 Desktop 的本地原生目录流程打开绑定应用窗口的 Electron 文件夹对话框，并先恢复、显示和聚焦该窗口。并发请求共用一个对话框；取消不返回路径，失败后可以重试。普通 Web 使用 Host 选择器。浏览模式列出 Host 目录。Linux 缺少 zenity 或 kdialog 时，自动选择使用浏览模式，不使用 Electron 对话框。
 
-Creator 和 Web Plugin Manager 在 Electron Node 模式下使用 Desktop 内置 pnpm，无需 PATH 中存在 pnpm。私有 Node 启动器环境仅应用于包操作。
+Creator 和 Web Plugin Manager 使用所选 Host 运行时执行 Desktop 内置 pnpm，无需 PATH 中存在 pnpm。私有 Node 启动器环境仅应用于包操作。
 
 Platform 内嵌文档使用持久化 WebContentsView 分区，分区名由 Platform 来源和稳定账号 ID 的哈希决定。localStorage 中的页面偏好（包括已关闭的通知）在关闭视图和重启应用后保留；不同账号和来源使用独立存储。账号 ID 来自 Host 最近一次成功的资料读取；尚无该 ID 时，文档在一次性分区中打开，该分区不跨次保留偏好。打开持久分区会先清理 Cookie、文件系统、IndexedDB、Cache Storage、HTTP 与着色器缓存、Service Worker 及 HTTP 认证状态；一次性分区则清理其全部存储。关闭视图会销毁文档、移除请求拦截器并安排相同的清理，因此异常退出遗留的认证会在下一个文档加载前被清除。下次打开和应用退出都会等待该清理完成，更新安装也会在安装器接管退出前等待。清理失败会使该次打开失败，并在后续清理成功前阻止同一账号打开；其他账号不受影响。退出登录会销毁文档，但保留账号偏好供下次登录使用。同一凭证下账号 ID 迟到时，已以一次性分区打开的文档保持挂载；下次打开使用账号分区。[存储决策](../../.agents/notes/implemented/architecture/2026-09-22-platform-browser-storage.zh.md)说明保留策略。Host 通过私有 Node IPC 发送账号凭证；账号 RPC 和 Harness 渲染进程不接收 token。Platform preload 在页面脚本执行前通过一次同步 IPC 读取主进程中已准备的凭证。它暴露 displayMode、同步的 getAuthToken() 和 getLocale() getter，以及返回取消订阅函数的 onLocaleChange(listener)。两个 getter 都只读取 preload 内存，不再调用 IPC。bootstrap 包含 Desktop 已解析的语言（`zh_CN` 或 `en_US`）；Settings 语言变更会更新 preload 缓存并通知已打开的 Platform 文档，无需重载。Platform 在首屏渲染前应用该语言，且不将其持久化为浏览器偏好。主进程处理器仅校验调用来源并读取内存，不等待 Host、磁盘或网络。可信页面初始化失败时保留内嵌模式，由 getter 抛错，避免回退到浏览器凭证。只有受控 Platform 页面中、位于所配置签发来源的主 frame 能完成初始化。退登、凭证替换、Host 关闭及视图关闭都会销毁文档。跨来源文档导航被阻止。请求新窗口的 HTTPS 链接在系统浏览器中打开，不携带内嵌会话或 token；其他协议及带 URL 凭证的链接被拒绝。原生视图占据 Account 功能返回栏下方的视口。
 
@@ -487,3 +487,17 @@ node apps/desktop/node_modules/pnpm/bin/pnpm.mjs --dir apps/desktop run test:upd
 ## 开发备注
 
 上线前 CDN 与容量决策见[桌面更新提案](../../.agents/notes/proposed/feature/2026-09-08-desktop-update-policy-and-installation.zh.md#cdn-and-capacity-qualification)。
+
+## Linux 源码开发
+
+此 fork 的 Linux Host 及其包脚本使用 `primary-runtime/dependencies/node/bin/node`，避开 Electron/Linux 的 GLib 冲突导致的 sharp 图片解码崩溃。Node payload 缺失或不可执行时启动失败，不会回退到 Electron。macOS 和 Windows 保留 Electron Node 模式。当前覆盖已准备的源码开发项目，不提供 Linux 安装包，也未验证独立 Node 读取 ASAR 的打包路径。
+
+构建 Desktop 并准备开发项目和 primary runtime 后，在仓库根目录运行附件回归验证：
+
+```sh
+node apps/desktop/scripts/smoke-linux-host-images.mjs \
+  apps/desktop/.desktop-build/targets/linux-x64/runtime/primary-runtime \
+  apps/desktop/.desktop-build/development/project
+```
+
+验证使用临时附件目录，执行三轮保存、读取和缩放，以及一个 pnpm 包脚本，不请求模型提供方。重新构建后重启 Desktop，才会启用新的 Host 运行时。

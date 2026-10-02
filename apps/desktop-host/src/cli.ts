@@ -18,7 +18,7 @@ export async function runDesktopCli(runtimeDir: string, supportDir: string): Pro
       command: process.execPath,
       args: ['--expose-internals', join(supportDir, 'pnpm', 'bin', 'pnpm.mjs')],
       env: {
-        ELECTRON_RUN_AS_NODE: '1',
+        ...process.versions.electron === undefined ? {} : { ELECTRON_RUN_AS_NODE: '1' },
         DSH_DESKTOP_NODE_EXECUTABLE: process.execPath,
         PATH: `${join(supportDir, 'bin')}${delimiter}${process.env.PATH ?? ''}`,
       },

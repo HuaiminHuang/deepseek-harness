@@ -187,11 +187,11 @@ describe('desktop host process', () => {
     const profile = mkdtempSync(join(tmpdir(), 'desktop-external-profile-'))
     roots.push(profile)
     const host = hostProcess(runtime, profile, undefined, {
-      ...process.env, NODE_OPTIONS: '--no-warnings', NODE_PATH: '/custom', NPM_CONFIG_REGISTRY: 'https://registry.example.test/',
+      ...process.env, ELECTRON_RUN_AS_NODE: '1', NODE_OPTIONS: '--no-warnings', NODE_PATH: '/custom', NPM_CONFIG_REGISTRY: 'https://registry.example.test/',
     })
     const { url } = await host.start()
     const response = await fetch(url)
-    expect(await response.json()).toEqual({ runtime, profile, cwd: realpathSync(profile), nodePath: '/custom', registry: 'https://registry.example.test/', nodeOptions: '--no-warnings', runAsNode: '1', internals: true })
+    expect(await response.json()).toEqual({ runtime, profile, cwd: realpathSync(profile), nodePath: '/custom', registry: 'https://registry.example.test/', nodeOptions: '--no-warnings', ...process.platform === 'linux' ? {} : { runAsNode: '1' }, internals: true })
   })
 
   it.each([

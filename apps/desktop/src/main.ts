@@ -23,6 +23,7 @@ import {
   type MenuItemConstructorOptions,
 } from 'electron'
 import { resolveDesktopPaths } from './paths.ts'
+import { desktopHostRuntime } from './host-node.ts'
 import { DesktopProjectManager } from './project-manager.ts'
 import { DesktopHostFatalError, DesktopHostProcess, DesktopHostUncleanExitError } from './host-process.ts'
 import { DesktopPlatformView, PLATFORM_IPC, platformBounds } from './platform-view.ts'
@@ -95,7 +96,7 @@ const recovery = new DesktopFatalRecovery({
   show: options => dialog.showMessageBox(options),
   stop: () => { shuttingDown = true; return stopForRecovery() },
   disablePlugins: async () => {
-    const manager = new DesktopProjectManager(resolveDesktopPaths(), runtimeResources())
+    const manager = new DesktopProjectManager(resolveDesktopPaths(), { dsh: runtimeDshDirectory() })
     const backupPath = await manager.disableAllPlugins()
     console.info('Desktop profile recovery completed:', { profilePatchBackup: backupPath ?? null, homePatch: 'unchanged' })
   },
@@ -148,16 +149,20 @@ interface RuntimeResources {
   readonly dsh: string
 }
 
-function runtimeResources(): RuntimeResources {
+function runtimeDshDirectory(): string {
   const development = !app.isPackaged
-  const node = process.execPath
-  const nodeBin = development ? join(app.getAppPath(), 'scripts', 'node-bin') : join(process.resourcesPath, 'runtime', 'bin')
+  return (development ? process.env.DSH_DESKTOP_DSH_DIR : undefined)
+    ?? (development ? join(app.getAppPath(), '.desktop-build', 'development', 'project') : join(app.getAppPath(), 'dsh'))
+}
+
+function runtimeResources(primaryRuntime: string): RuntimeResources {
+  const development = !app.isPackaged
+  const electronNodeBin = development ? join(app.getAppPath(), 'scripts', 'node-bin') : join(process.resourcesPath, 'runtime', 'bin')
   const pnpm = (development ? process.env.DSH_DESKTOP_PNPM_ENTRY : undefined)
     ?? (development ? join(app.getAppPath(), 'node_modules', 'pnpm', 'bin', 'pnpm.mjs')
       : join(process.resourcesPath, 'runtime', 'pnpm', 'bin', 'pnpm.mjs'))
-  const dsh = (development ? process.env.DSH_DESKTOP_DSH_DIR : undefined)
-    ?? (development ? join(app.getAppPath(), '.desktop-build', 'development', 'project') : join(app.getAppPath(), 'dsh'))
-  return { node, nodeBin, pnpm, dsh }
+  const dsh = runtimeDshDirectory()
+  return { ...desktopHostRuntime(process.platform, process.execPath, electronNodeBin, primaryRuntime), pnpm, dsh }
 }
 
 function developmentPrimaryRuntime(): string {
@@ -316,12 +321,12 @@ async function main(): Promise<void> {
   void pruneCrashReports(app.getPath('logs'))
   const journalDirectory = process.env.DSH_DESKTOP_UPDATE_JOURNAL_DIR
   const updateJournal = journalDirectory === undefined ? undefined : new DesktopUpdateJournal(journalDirectory, app.getVersion())
-  const resources = runtimeResources()
   const paths = resolveDesktopPaths()
   const development = !app.isPackaged
   const primaryRuntime = development
     ? developmentPrimaryRuntime()
     : join(process.resourcesPath, 'runtime', 'primary-runtime')
+  const resources = runtimeResources(primaryRuntime)
   const activeProject = paths.profile
   const manager = new DesktopProjectManager(paths, resources)
   // Dock and Finder launches inherit only launchd's environment; every Host shares one login-shell read.

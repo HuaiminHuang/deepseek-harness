@@ -1,4 +1,4 @@
-/** Electron Node-mode child lifecycle for the shared Web application. */
+/** Desktop Host child lifecycle for the shared Web application. */
 
 import { spawn, type ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
@@ -196,7 +196,7 @@ export class DesktopHostProcess {
       ...this.packageManager === undefined ? [] : [this.packageManager.pnpm, this.packageManager.nodeBin],
     ], {
       cwd: this.projectDir,
-      env: desktopNodeEnvironment(this.node, undefined, this.environment),
+      env: desktopNodeEnvironment(this.node, undefined, this.environment, process.platform !== 'linux'),
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     })
     this.child = child

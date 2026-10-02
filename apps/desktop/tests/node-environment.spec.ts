@@ -17,3 +17,12 @@ it('provides private launchers only to package installation processes', () => {
     PATH: `/desktop/bin${delimiter}/user/bin`,
   })
 })
+
+it('clears inherited Electron mode for standalone Node without mutating the caller', () => {
+  const environment = { PATH: '/user/bin', ELECTRON_RUN_AS_NODE: '1' }
+  expect(desktopNodeEnvironment('/runtime/node', undefined, environment, false)).toEqual({ PATH: '/user/bin' })
+  expect(desktopNodeEnvironment('/runtime/node', '/runtime/bin', environment, false)).toEqual({
+    PATH: `/runtime/bin${delimiter}/user/bin`, DSH_DESKTOP_NODE_EXECUTABLE: '/runtime/node',
+  })
+  expect(environment.ELECTRON_RUN_AS_NODE).toBe('1')
+})
