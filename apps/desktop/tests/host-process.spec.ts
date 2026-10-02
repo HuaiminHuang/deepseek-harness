@@ -159,7 +159,9 @@ describe('desktop host process', () => {
     const { url } = await host.start()
     await fetch(new URL('/crash', url))
     await expect.poll(() => failure.mock.calls.length).toBe(1)
-    expect(failure).toHaveBeenCalledWith(new Error('dsh desktop host exited with 7: plugin crashed'))
+    expect(failure.mock.calls[0]?.[0]?.message).toMatch(
+      /^dsh desktop host exited \(code=7, signal=null, pid=\d+, stopping=false, shutdownCompleted=false\): plugin crashed$/,
+    )
   })
 
   it('retains only recent diagnostics from a noisy child', async () => {
@@ -196,7 +198,8 @@ describe('desktop host process', () => {
     ["process.send({ type: 'fatal', message: 'startup failed' }); process.disconnect()", 'startup failed'],
     ["process.send({ type: 'ready', url: 4 })", 'invalid IPC event'],
     ["process.send({ type: 'fatal', message: 'startup failed', diagnostic: 42 })", 'invalid IPC event'],
-    ['process.exit(0)', 'host stopped'],
+    ['process.exit(0)', 'code=0, signal=null'],
+    ['process.kill(process.pid, \'SIGTERM\')', 'code=null, signal=SIGTERM'],
   ])('rejects startup when the child fails before readiness: %s', async (source, message) => {
     const host = hostProcess(projectWithHost(source))
     await expect(host.start()).rejects.toThrow(message)

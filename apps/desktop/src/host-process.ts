@@ -224,10 +224,11 @@ export class DesktopHostProcess {
     })
     child.once('error', (error) => { this.fail(error) })
     this.exitPromise = new Promise<void>((resolve) => {
-      child.once('close', (code) => {
+      child.once('close', (code, signal) => {
         const suffix = this.stderr.trim() === '' ? '' : `: ${this.stderr.trim()}`
-        if (code !== 0 && code !== null) this.fail(new Error(`dsh desktop host exited with ${String(code)}${suffix}`))
-        else this.fail(new Error(`dsh desktop host stopped${suffix}`))
+        const reason = `code=${String(code)}, signal=${String(signal)}, pid=${String(child.pid)}, stopping=${String(this.stopping)}, shutdownCompleted=${String(this.shutdownCompleted)}`
+        if (code !== 0 && code !== null) this.fail(new Error(`dsh desktop host exited (${reason})${suffix}`))
+        else this.fail(new Error(`dsh desktop host stopped (${reason})${suffix}`))
         resolve()
       })
     })
